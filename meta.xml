@@ -1,0 +1,16 @@
+<meta>
+    <info author="Corrupt" name="VisionX" version="3.2.0" type="VisionX - Advanced Draw Distance Script" />
+    
+    <!-- Scripts -->
+    <script src="server.lua" type="server" />
+    <script src="client.lua" type="client" />
+    <script src="builder_server.lua" type="server" />
+    <!-- Essential data file for categorization -->
+    <file src="objects.xml" />
+
+    <!-- Allow other server scripts to access the categorization data -->
+    <export function="getCategoryLookup" type="server" />
+
+    <!-- Settings will be saved here -->
+    <file src="settings.json" />
+</meta>
