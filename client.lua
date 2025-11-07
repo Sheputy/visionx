@@ -989,3 +989,4 @@ addEventHandler("visionx:receiveBuildError", root, function(errMsg)
     outputChatBox("[#"..UIManager.brandColor.."VisionX Builder ERROR#ffffff] " .. errMsg, 255, 100, 100, true)
 end)
 
+-- test update
