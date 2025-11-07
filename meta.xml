@@ -14,4 +14,11 @@
 
     <!-- Settings will be saved here -->
     <file src="settings.json" />
+
+
+    <!-- Auto Updater Permissions -->
+    <aclrequest>
+		<right name="function.fetchRemote" access="true" />
+		<right name="function.restartResource" access="true" />
+	</aclrequest>
 </meta>
