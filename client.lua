@@ -3,7 +3,15 @@
 --
 --  Author: Corrupt
 --  VisionX Advanced - Client-Side Logic
---  Version: 3.2.0
+--  Version: 3.2.2 (Optimized + UI Fixes)
+--
+--  CHANGELOG:
+--  - Added Clone Limit (configurable in settings)
+--  - Added On-Screen Clone Overlay (bottom-center)
+--  - Added /vx clones toggle for overlay
+--  - Added color-coding to overlay
+--  - Optimized Spawning Logic (Frustum Culling)
+--  - Fixed grid bounds typo
 --
 ============================================================
 ]]
@@ -36,6 +44,7 @@ VisionX.CONFIG = {
     CREATION_BATCH_LIMIT = 100,
     UPDATE_TICK_RATE = 500,
     SPATIAL_GRID_CELL_SIZE = 200,
+    CLONE_LIMIT = 500, -- ADDED: Hard limit on active clones
     DEBUG_MODE = false,
 }
 
@@ -61,6 +70,7 @@ VisionX.state = {
 UIManager = {
     Main = {},
     Settings = {},
+    Overlay = {}, -- ADDED: For on-screen display
     brandColor = "0DBCFF", -- Used for chatbox feedback
     isPanelVisible = false, -- Remembers 'Z' key state
     
@@ -69,6 +79,19 @@ UIManager = {
 }
 
 -- === UI CREATION ===
+
+-- ADDED: Initialize the overlay settings
+UIManager.Overlay = {
+    text = "Active Clones: 0 / 500",
+    font = "default-bold",
+    screenWidth = 0,
+    screenHeight = 0,
+    isVisible = true, -- ADDED: Toggle state for the overlay
+    color = tocolor(0, 255, 0, 255), -- ADDED: Color for the text (default green)
+}
+local sx, sy = guiGetScreenSize()
+UIManager.Overlay.screenWidth = sx
+UIManager.Overlay.screenHeight = sy
 
 -- This function is called once to build the main panel
 function UIManager:CreateMainPanel()
@@ -135,7 +158,7 @@ end
 
 -- This function is called once to build the settings panel
 function UIManager:CreateSettingsPanel()
-    local w, h = 400, 280
+    local w, h = 400, 310 -- MODIFIED: Increased height for new option
     local sx, sy = guiGetScreenSize()
     local x, y = sx / 2 - w / 2, sy / 2 - h / 2
     
@@ -146,11 +169,12 @@ function UIManager:CreateSettingsPanel()
     local labels = {
         "Max View Range (500-3000):",
         "Min View Range (0-300):",
-        "Creation Batch (5-500):",
-        "Update Tick (50-4000ms):",
-        "Spatial Grid (10-1000):",
+        "Creation Batch (5-1000):",
+        "Update Tick (50-9000ms):",
+        "Spatial Grid (10-3000):",
+        "Active Clone Limit (50-3000) Recommended (800):", -- ADDED
     }
-    local keys = { "MAX_VIEW_RANGE", "MIN_VIEW_RANGE", "CREATION_BATCH_LIMIT", "UPDATE_TICK_RATE", "SPATIAL_GRID_CELL_SIZE" }
+    local keys = { "MAX_VIEW_RANGE", "MIN_VIEW_RANGE", "CREATION_BATCH_LIMIT", "UPDATE_TICK_RATE", "SPATIAL_GRID_CELL_SIZE", "CLONE_LIMIT" } -- ADDED
     UIManager.Settings.edits = {}
     
     local yPos = 30
@@ -257,7 +281,8 @@ function UIManager:UpdateStats()
     guiSetText(UIManager.Main.statCached, string.format("Total Cached: %d", table.size(state.masterObjectRegistry)))
     local categoryName = state.activeCategory or "Off"
     guiSetText(UIManager.Main.statActive, string.format("Active Objs (%s): %d", categoryName, table.size(state.objectRegistry)))
-    guiSetText(UIManager.Main.statClones, string.format("Active Clones: %d", table.size(state.activeClones)))
+    -- MODIFIED: Show clone limit in GUI stats
+    guiSetText(UIManager.Main.statClones, string.format("Active Clones: %d / %d", table.size(state.activeClones), config.CLONE_LIMIT))
     guiSetText(UIManager.Main.statRange, string.format("View Range: %d - %d", config.MIN_VIEW_RANGE, config.MAX_VIEW_RANGE))
     
     -- Calculate grid dimensions
@@ -311,10 +336,11 @@ function UIManager:onSettingsSave()
     
     newConfig.MAX_VIEW_RANGE = getClampedValue("MAX_VIEW_RANGE", 500, 3000)
     newConfig.MIN_VIEW_RANGE = getClampedValue("MIN_VIEW_RANGE", 0, 300)
-    newConfig.CREATION_BATCH_LIMIT = getClampedValue("CREATION_BATCH_LIMIT", 5, 500)
-    newConfig.UPDATE_TICK_RATE = getClampedValue("UPDATE_TICK_RATE", 50, 4000)
-    newConfig.SPATIAL_GRID_CELL_SIZE = getClampedValue("SPATIAL_GRID_CELL_SIZE", 10, 1000)
-    newConfig.DEBUG_MODE = VisionX.CONFIG.DEBUG_MODE -- Keep this unchanged
+    newConfig.CREATION_BATCH_LIMIT = getClampedValue("CREATION_BATCH_LIMIT", 1, 1000)
+    newConfig.UPDATE_TICK_RATE = getClampedValue("UPDATE_TICK_RATE", 1, 9000)
+    newConfig.SPATIAL_GRID_CELL_SIZE = getClampedValue("SPATIAL_GRID_CELL_SIZE", 1, 3000)
+    newConfig.CLONE_LIMIT = getClampedValue("CLONE_LIMIT", 50, 3000) 
+    newConfig.DEBUG_MODE = VisionX.CONFIG.DEBUG_MODE 
     
     -- Send new settings to the server for validation and saving
     triggerServerEvent("visionx:saveSettings", localPlayer, newConfig)
@@ -351,6 +377,46 @@ function UIManager:onRefresh(isSilent)
     else
         outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] #ffaaaaVisionX is not initialized yet.", 255, 255, 255, true)
     end
+end
+
+-- ADDED: Updates the text for the on-screen overlay
+function UIManager:UpdateOverlayText()
+    local count = table.size(VisionX.state.activeClones)
+    local limit = VisionX.CONFIG.CLONE_LIMIT
+    UIManager.Overlay.text = string.format("Active Clones: %d / %d", count, limit)
+    
+    -- ADDED: Color-coding logic
+    local percentage = count / limit
+    if percentage >= 0.9 then
+        UIManager.Overlay.color = tocolor(255, 50, 50, 255) -- Red
+    elseif percentage >= 0.75 then
+        UIManager.Overlay.color = tocolor(255, 165, 0, 255) -- Orange
+    else
+        UIManager.Overlay.color = tocolor(50, 255, 50, 255) -- Green
+    end
+end
+
+-- ADDED: Renders the on-screen overlay
+function UIManager:RenderOverlay()
+    -- ADDED: Check if overlay is toggled on
+    if not UIManager.Overlay.isVisible then
+        return
+    end
+    
+    -- Only render if VisionX is active (not "Off")
+    if not VisionX.state.isEnabled then
+        return
+    end
+    
+    local text = UIManager.Overlay.text -- Get the cached text
+    -- MODIFIED: Position to middle-bottom
+    local x = UIManager.Overlay.screenWidth / 2 -- Center horizontally
+    local y = UIManager.Overlay.screenHeight - 40 -- 40px padding from bottom
+    
+    -- Draw shadow/outline
+    dxDrawText(text, x + 1, y + 1, x + 1, y + 1, tocolor(0, 0, 0, 200), 1.2, UIManager.Overlay.font, "center", "bottom")
+    -- Draw main text
+    dxDrawText(text, x, y, x, y, UIManager.Overlay.color, 1.2, UIManager.Overlay.font, "center", "bottom")
 end
 
 -- === KEYBINDS & COMMANDS ===
@@ -422,14 +488,21 @@ addCommandHandler("vx", function(cmd, arg)
         local gridDims = (cellCount > 0) and string.format("%dx%d (%d Cells)", dimX, dimY, cellCount) or "0x0 (0 Cells)"
 
         outputChatBox("[#"..UIManager.brandColor.."VisionX Stats#ffffff] ----------------", 255, 255, 255, true)
-        outputChatBox(string.format("  Mode: #aaffaa%s#ffffff | Clones: #aaffaa%d", state.activeCategory or "Off", table.size(state.activeClones)), 255, 255, 255, true)
+        outputChatBox(string.format("  Mode: #aaffaa%s#ffffff | Clones: #aaffaa%d / %d", state.activeCategory or "Off", table.size(state.activeClones), config.CLONE_LIMIT), 255, 255, 255, true)
         outputChatBox(string.format("  Cached Objs: #aaffaa%d#ffffff | Active Objs: #aaffaa%d", table.size(state.masterObjectRegistry), table.size(state.objectRegistry)), 255, 255, 255, true)
         outputChatBox(string.format("  Range: #aaffaa%d - %d#ffffff | Grid Dims: #aaffaa%s", config.MIN_VIEW_RANGE, config.MAX_VIEW_RANGE, gridDims), 255, 255, 255, true)
 
     elseif arg == "refresh" then
         UIManager:onRefresh()
+    elseif arg == "clones" then -- ADDED: Toggle for clone overlay
+        UIManager.Overlay.isVisible = not UIManager.Overlay.isVisible
+        if UIManager.Overlay.isVisible then
+            outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] #aaffaaClone overlay enabled.", 255, 255, 255, true)
+        else
+            outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] #ffaaaaClone overlay disabled.", 255, 255, 255, true)
+        end
     else
-        outputChatBox("Usage: /vx [deco|track|all|off|settings|build|stats|refresh]", 255, 255, 255, true)
+        outputChatBox("Usage: /vx [deco|track|all|off|settings|build|stats|refresh|clones]", 255, 255, 255, true)
     end
 end)
 
@@ -507,7 +580,7 @@ end
 -- Builds the spatial grid from the targeted object registry for fast spatial lookups.
 function VisionX:_BuildSpatialGrid()
     self.state.spatialGrid = {}
-    self.state.gridBounds = { minX = 99999, minY = 99999, maxX = -99999, maxY = -99999 }
+    self.state.gridBounds = { minX = 9999, minY = 9999, maxX = -9999, maxY = -9999 }
     local cellSize = self.CONFIG.SPATIAL_GRID_CELL_SIZE
     if not cellSize or cellSize <= 0 then cellSize = 250 end -- Safety check
 
@@ -626,6 +699,12 @@ function VisionX:_PerformSpawningLogic()
     local playerDim = getElementDimension(localPlayer)
     local createdThisCycle = 0
     
+    -- ADDED: Check current clone count against the new limit
+    local currentCloneCount = table.size(self.state.activeClones)
+    if currentCloneCount >= self.CONFIG.CLONE_LIMIT then
+        return -- Hard stop, we are at or over the limit
+    end
+    
     local minRangeSq = self.CONFIG.MIN_VIEW_RANGE * self.CONFIG.MIN_VIEW_RANGE
     local maxRangeSq = self.CONFIG.MAX_VIEW_RANGE * self.CONFIG.MAX_VIEW_RANGE
     local cellSize = self.CONFIG.SPATIAL_GRID_CELL_SIZE
@@ -634,20 +713,38 @@ function VisionX:_PerformSpawningLogic()
     local pGridX = math.floor(camX / cellSize)
     local pGridY = math.floor(camY / cellSize)
     
+    -- ADDED: Get screen size once for frustum culling
+    local screenWidth, screenHeight = UIManager.Overlay.screenWidth, UIManager.Overlay.screenHeight
+    local screenBuffer = 200 -- Spawn objects 200px off-screen to avoid "pop-in"
+    
     for i = -searchRadius, searchRadius do
         for j = -searchRadius, searchRadius do
             local key = (pGridX + i) .. "_" .. (pGridY + j)
             if self.state.spatialGrid[key] then
                 for _, sourceElement in ipairs(self.state.spatialGrid[key]) do
+                    -- Check batch limit
                     if createdThisCycle >= self.CONFIG.CREATION_BATCH_LIMIT then return end
+                    
+                    -- ADDED: Check if adding this clone would exceed the limit
+                    if (currentCloneCount + createdThisCycle) >= self.CONFIG.CLONE_LIMIT then
+                        return -- Stop spawning this cycle
+                    end
                     
                     local data = self.state.objectRegistry[sourceElement]
                     if data and not self.state.activeClones[sourceElement] and data.dimension == playerDim then
                         local dx, dy, dz = data.pos[1] - camX, data.pos[2] - camY, data.pos[3] - camZ
                         local distSq = dx*dx + dy*dy + dz*dz
                         if distSq >= minRangeSq and distSq <= maxRangeSq then
+                            
+                            -- OPTIMIZED: This is the new, stricter frustum culling logic
                             local sX, sY = getScreenFromWorldPosition(data.pos[1], data.pos[2], data.pos[3])
-                            if sX and sY then
+                            
+                            -- sX and sY are non-nil if in front of camera
+                            -- We also check if they are within the screen bounds (+ buffer)
+                            if sX and sY and 
+                                sX >= -screenBuffer and sX <= screenWidth + screenBuffer and
+                                sY >= -screenBuffer and sY <= screenHeight + screenBuffer then
+                                
                                 local newClone = createObject(data.model, data.pos[1], data.pos[2], data.pos[3], data.rot[1], data.rot[2], data.rot[3], true)
                                 setElementDimension(newClone, data.dimension)
                                 setElementInterior(newClone, data.interior)
@@ -690,17 +787,23 @@ function VisionX:Activate(category, isRefresh)
     self:_PerformSpawningLogic() -- Run once immediately
     UIManager:SyncRadioButtons() -- Update UI
     UIManager:UpdateStats()      -- Update Stats
+    UIManager:UpdateOverlayText() -- ADDED: Update overlay
 
     -- Start the main update loops.
     if isTimer(self.timers.spawn) then killTimer(self.timers.spawn) end
     if isTimer(self.timers.cullDelay) then killTimer(self.timers.cullDelay) end
     if isTimer(self.timers.cull) then killTimer(self.timers.cull) end
     
-    self.timers.spawn = setTimer(function() self:_PerformSpawningLogic() end, self.CONFIG.UPDATE_TICK_RATE, 0)
+    self.timers.spawn = setTimer(function() 
+        self:_PerformSpawningLogic() 
+        UIManager:UpdateOverlayText() -- ADDED: Update overlay after spawn
+    end, self.CONFIG.UPDATE_TICK_RATE, 0)
+    
     self.timers.cullDelay = setTimer(function()
         self.timers.cull = setTimer(function()
             self:_PerformCullingLogic()
             UIManager:UpdateStats() -- Update clone count
+            UIManager:UpdateOverlayText() -- ADDED: Update overlay after cull
         end, self.CONFIG.UPDATE_TICK_RATE, 0)
     end, self.CONFIG.UPDATE_TICK_RATE / 2, 1)
 end
@@ -726,6 +829,7 @@ function VisionX:Deactivate(isSwitching)
     self:_ResetAllModelsLOD(1000) -- Reset all LODs to default.
     UIManager:SyncRadioButtons() -- Update UI
     UIManager:UpdateStats() -- Update clone count
+    UIManager:UpdateOverlayText() -- ADDED: Update overlay
 end
 
 function VisionX:Refresh(isHardReset, delay, isSilent)
@@ -823,6 +927,19 @@ function VisionX:Initialize()
             VisionX:_HandleStreamIn(source)
         end
     end)
+
+    -- ADDED: Handle overlay rendering
+    addEventHandler("onClientRender", root, function()
+        UIManager:RenderOverlay()
+    end)
+    
+    -- ADDED: Keep overlay screen size in sync
+    addEventHandler("onClientScreenSizeChange", root,
+        function (width, height)
+            UIManager.Overlay.screenWidth = width
+            UIManager.Overlay.screenHeight = height
+        end
+    )
 
     outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] v3.2 Loaded. Press #aaffaaZ#ffffff to toggle panel. #aaffaa/vx [mode]#ffffff for commands.", 255, 255, 255, true)
     self:_ResetAllModelsLOD(1000)
@@ -936,7 +1053,10 @@ end)
 addEvent("visionx:receiveInitialData", true)
 addEventHandler("visionx:receiveInitialData", root, function(categories, settings, isAdmin) 
     VisionX.state.categoryLookup = categories 
+    -- IMPORTANT: Ensure our new default doesn't get wiped out if server is older
+    local newCloneLimit = settings.CLONE_LIMIT or VisionX.CONFIG.CLONE_LIMIT
     VisionX.CONFIG = settings 
+    VisionX.CONFIG.CLONE_LIMIT = newCloneLimit
     VisionX.state.isAdmin = isAdmin
     VisionX:Initialize() 
 end)
@@ -948,7 +1068,11 @@ addEventHandler("visionx:syncSettings", root, function(settings)
     
     if wasEnabled then VisionX:Deactivate(true) end
     
+    -- IMPORTANT: Ensure our new default doesn't get wiped out if server is older
+    local newCloneLimit = settings.CLONE_LIMIT or VisionX.CONFIG.CLONE_LIMIT
     VisionX.CONFIG = settings
+    VisionX.CONFIG.CLONE_LIMIT = newCloneLimit
+    
     outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] #aaffaaGlobal settings have been updated by an admin.", 255, 255, 255, true)
     
     if wasEnabled then 
@@ -967,7 +1091,7 @@ addEventHandler("visionx:onSettingsSaved", root, function(success, message)
         if VisionX.state.isAdmin then
             outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] --- New Settings ---", 255, 255, 255, true)
             outputChatBox(string.format("  Range: #aaffaa%d - %d#ffffff | Tick: #aaffaa%dms", VisionX.CONFIG.MIN_VIEW_RANGE, VisionX.CONFIG.MAX_VIEW_RANGE, VisionX.CONFIG.UPDATE_TICK_RATE), 255, 255, 255, true)
-            outputChatBox(string.format("  Grid: #aaffaa%d#ffffff | Batch: #aaffaa%d", VisionX.CONFIG.SPATIAL_GRID_CELL_SIZE, VisionX.CONFIG.CREATION_BATCH_LIMIT), 255, 255, 255, true)
+            outputChatBox(string.format("  Grid: #aaffaa%d#ffffff | Batch: #aaffaa%d | Clone Limit: #aaffaa%d", VisionX.CONFIG.SPATIAL_GRID_CELL_SIZE, VisionX.CONFIG.CREATION_BATCH_LIMIT, VisionX.CONFIG.CLONE_LIMIT), 255, 255, 255, true)
         end
     else
         outputChatBox("[#"..UIManager.brandColor.."VisionX#ffffff] #ffaaaa" .. message, 255, 255, 255, true)
@@ -988,5 +1112,3 @@ addEvent("visionx:receiveBuildError", true)
 addEventHandler("visionx:receiveBuildError", root, function(errMsg)
     outputChatBox("[#"..UIManager.brandColor.."VisionX Builder ERROR#ffffff] " .. errMsg, 255, 100, 100, true)
 end)
-
--- test update

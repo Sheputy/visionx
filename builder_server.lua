@@ -3,7 +3,13 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.0 
+--  Version: 3.2.3 (Core-Only Template)
+--
+--  CHANGELOG:
+--  - Updated standalone template to match client v3.2.2
+--  - Standalone now includes Clone Limit logic
+--  - Standalone now includes buffered Frustum Culling
+--  - REMOVED all editor-specific logic from template
 --
 ============================================================
 ]]
@@ -44,7 +50,7 @@ end
 local function formatModelIDTable(modelIDs, isCommented)
     if #modelIDs == 0 then return "" end
     local parts = {}
-    local prefix = isCommented and "--         " or "        "
+    local prefix = isCommented and "--        " or "        "
 
     for _, id in ipairs(modelIDs) do
         table.insert(parts, string.format("[%d] = true", id))
@@ -65,7 +71,7 @@ end
 ---
 -- @function generateStandaloneScript
 -- @private
--- Constructs the full standalone script as a string using the new v4.x template.
+-- Constructs the full standalone script as a string using the new v3.2.3 (Core) template.
 ---
 local function generateStandaloneScript(settings, includedString, otherString)
     -- This large string is the template for the standalone script.
@@ -75,11 +81,11 @@ local function generateStandaloneScript(settings, includedString, otherString)
 --
 --  VisionX Standalone - Generated for Map Resource
 --  Author: Corrupt
---  Version: 3.2.0
+--  Version: 3.2.3 (Core Logic)
 --
---  This is a self-contained script. Paste it into your
---  map's client-side files or include it via meta.xml.
---  It includes spatial grid logic for performance.
+--  This is a self-contained, core-only script. 
+--  It includes spatial grid, clone limits, and
+--  frustum culling logic for performance.
 --
 ============================================================
 ]]
@@ -106,6 +112,7 @@ VisionX.CONFIG = {
     CREATION_BATCH_LIMIT = %d,
     UPDATE_TICK_RATE = %d,
     SPATIAL_GRID_CELL_SIZE = %d,
+    CLONE_LIMIT = %d, -- ADDED: Hard limit on active clones
     
     -- All object models to be rendered by this script
     TARGET_MODEL_IDS = {
@@ -130,6 +137,8 @@ VisionX.state = {
     objectRegistry = {}, -- Caches only objects matching TARGET_MODEL_IDS
     activeClones = {}, -- Tracks currently rendered clone objects.
     spatialGrid = {}, -- The spatial grid for performance optimization.
+    screenWidth = 0, -- For frustum culling
+    screenHeight = 0, -- For frustum culling
 }
 
 -- ////////////////////////////////////////////////////////////////////////////
@@ -147,18 +156,17 @@ function VisionX:_BuildObjectRegistry()
         -- Check if model is in our target list and not a clone
         if self.CONFIG.TARGET_MODEL_IDS[modelId] and not getElementData(entity, "visionx_clone") and getElementDimension(entity) == playerDimension then
             
-            -- ** MODIFIED: Added scale and alpha filtering **
             local scale = getObjectScale(entity)
             local alpha = getElementAlpha(entity)
             
-            if (scale >= 0.1 and scale <= 100) and (alpha >= 50) then
+            if (scale >= 0.1 and scale <= 400) and (alpha >= 50) then
                 local pX, pY, pZ = getElementPosition(entity)
                 local rX, rY, rZ = getElementRotation(entity)
                 self.state.objectRegistry[entity] = {
                     model = modelId,
                     pos = { pX, pY, pZ },
                     rot = { rX, rY, rZ },
-                    scale = scale, -- Use the 'scale' variable
+                    scale = scale, 
                     dimension = getElementDimension(entity),
                     interior = getElementInterior(entity)
                 }
@@ -233,6 +241,11 @@ function VisionX:_PerformSpawningLogic()
     local playerDim = getElementDimension(localPlayer)
     local createdThisCycle = 0
     
+    local currentCloneCount = table.size(self.state.activeClones)
+    if currentCloneCount >= self.CONFIG.CLONE_LIMIT then
+        return -- Hard stop, we are at or over the limit
+    end
+    
     local minRangeSq = self.CONFIG.MIN_VIEW_RANGE * self.CONFIG.MIN_VIEW_RANGE
     local maxRangeSq = self.CONFIG.MAX_VIEW_RANGE * self.CONFIG.MAX_VIEW_RANGE
     local cellSize = self.CONFIG.SPATIAL_GRID_CELL_SIZE
@@ -241,12 +254,22 @@ function VisionX:_PerformSpawningLogic()
     local pGridX = math.floor(camX / cellSize)
     local pGridY = math.floor(camY / cellSize)
     
+    -- Get screen size once for frustum culling
+    local screenWidth, screenHeight = self.state.screenWidth, self.state.screenHeight
+    local screenBuffer = 200 -- Spawn objects 200px off-screen to avoid "pop-in"
+    
     for i = -searchRadius, searchRadius do
         for j = -searchRadius, searchRadius do
             local key = (pGridX + i) .. "_" .. (pGridY + j)
             if self.state.spatialGrid[key] then
                 for _, sourceElement in ipairs(self.state.spatialGrid[key]) do
+                    -- Check batch limit
                     if createdThisCycle >= self.CONFIG.CREATION_BATCH_LIMIT then return end
+                    
+                    -- Check if adding this clone would exceed the limit
+                    if (currentCloneCount + createdThisCycle) >= self.CONFIG.CLONE_LIMIT then
+                        return -- Stop spawning this cycle
+                    end
                     
                     local data = self.state.objectRegistry[sourceElement]
                     if data and not self.state.activeClones[sourceElement] and data.dimension == playerDim then
@@ -254,9 +277,13 @@ function VisionX:_PerformSpawningLogic()
                         local distSq = dx*dx + dy*dy + dz*dz
                         if distSq >= minRangeSq and distSq <= maxRangeSq then
                             
-                            -- Correct frustum culling
+                            -- Stricter frustum culling logic
                             local sX, sY = getScreenFromWorldPosition(data.pos[1], data.pos[2], data.pos[3])
-                            if sX and sY then
+                            
+                            if sX and sY and 
+                               sX >= -screenBuffer and sX <= screenWidth + screenBuffer and
+                               sY >= -screenBuffer and sY <= screenHeight + screenBuffer then
+                                
                                 local newClone = createObject(data.model, data.pos[1], data.pos[2], data.pos[3], data.rot[1], data.rot[2], data.rot[3], true)
                                 setElementDimension(newClone, data.dimension)
                                 setElementInterior(newClone, data.interior)
@@ -309,20 +336,21 @@ function VisionX:Initialize()
         engineSetModelLODDistance(modelId, self.CONFIG.MIN_VIEW_RANGE)
     end
     
+    -- Get initial screen size and set up handler (required for frustum culling)
+    local sx, sy = guiGetScreenSize()
+    self.state.screenWidth = sx
+    self.state.screenHeight = sy
+    
+    addEventHandler("onClientScreenSizeChange", root,
+        function (width, height)
+            VisionX.state.screenWidth = width
+            VisionX.state.screenHeight = height
+        end
+    )
+    
     if self.CONFIG.ENABLED_BY_DEFAULT then
         self:Activate()
     end
-    
-    -- Handle map editor state changes
-    addEventHandler("onClientEditorSuspended", root, function(suspended)
-        if suspended then
-            -- Editor is active, disable script
-            VisionX:Deactivate()
-        else
-            -- Editor is inactive, enable script
-            VisionX:Activate()
-        end
-    end)
     
     -- Refresh if player streams back in (e.g., changing dimension)
     addEventHandler("onClientPlayerStreamIn", root, function()
@@ -347,6 +375,7 @@ addEventHandler("onClientResourceStop", resourceRoot, function() VisionX:Deactiv
         settings.CREATION_BATCH_LIMIT,
         settings.UPDATE_TICK_RATE,
         settings.SPATIAL_GRID_CELL_SIZE,
+        settings.CLONE_LIMIT,
         includedString,
         otherString
     )
