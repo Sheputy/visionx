@@ -4,7 +4,7 @@
 --  Repository: https://github.com/Sheputy/visionx
 --  Description: Automatically fetches and applies the latest
 --  VisionX updates from GitHub. Checks every 24 hours.
---  Manual update: /vxupdate
+--  Manual update: /vx update
 --  Brand Color: #0DBCFF
 --  Requires fetchRemote permissions in ACL:
 --      /aclrequest allow visionx32 all
@@ -39,41 +39,37 @@ addEventHandler("onResourceStart", resourceRoot, function()
 end)
 
 ------------------------------------------------------------
--- MANUAL UPDATE COMMAND (/vxupdate)
+-- MANUAL UPDATE COMMAND (/vx update)
 ------------------------------------------------------------
--- FIXED: Renamed command to /vxupdate to avoid conflict with client.lua
-addCommandHandler("vxupdate", function(player, cmd)
-    outputChatBox(string.format("%s[%sVisionX%s] %sManual update triggered...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
-    queueGitRepo(true, player)
+addCommandHandler("vx", function(player, cmd, arg)
+    if arg and arg:lower() == "update" then
+        outputChatBox(string.format("%s[%sVisionX%s] %sManual update triggered...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
+        queueGitRepo(true, player)
+    elseif player and isElement(player) then
+        outputChatBox(string.format("%s[%sVisionX%s] %sUsage: /vx update%s — manually check for updates.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), player, 255, 255, 255, true)
+    end
 end)
 
 ------------------------------------------------------------
 -- FETCH GITHUB CONTENT
 ------------------------------------------------------------
 function queueGitRepo(isManual, player)
-    -- FIXED: Used 'resourceRoot' instead of the undefined 'resource'
-    if not hasObjectPermissionTo(resourceRoot, "function.fetchRemote") then
+    if not hasObjectPermissionTo(resource, "function.fetchRemote") then
         outputChatBox(string.format("%s[%sVisionX%s] %sMissing%s fetchRemote %spermission.%s Run %s/aclrequest allow %s all%s then restart.", 
             TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR, INFO_COLOR, RESOURCE_NAME, TEXT_COLOR), root, 255, 255, 255, true)
         return
     end
 
-    -- FIXED: Safer check for the target of the chat message
-    local target = (player and isElement(player)) and player or root
-    outputChatBox(string.format("%s[%sVisionX%s] %sChecking GitHub for updates...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), target, 255, 255, 255, true)
-    
+    outputChatBox(string.format("%s[%sVisionX%s] %sChecking GitHub for updates...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player or root, 255, 255, 255, true)
     fetchRemote(REPO_CONTENT_URL, function(response, err)
-        -- FIXED: Safer check for the player element inside the async callback
-        local target = (player and isElement(player)) and player or root
-
         if err ~= 0 or response == "ERROR" then
-            outputChatBox(string.format("%s[%sVisionX%s] %sFailed%s to connect to GitHub (%sError %d%s).", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR, FAIL_COLOR, err, TEXT_COLOR), target, 255, 255, 255, true)
+            outputChatBox(string.format("%s[%sVisionX%s] %sFailed%s to connect to GitHub (%sError %d%s).", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR, FAIL_COLOR, err, TEXT_COLOR), player or root, 255, 255, 255, true)
             return
         end
 
         local data = fromJSON(response)
         if type(data) ~= "table" then
-            outputChatBox(string.format("%s[%sVisionX%s] %sInvalid GitHub response.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR), target, 255, 255, 255, true)
+            outputChatBox(string.format("%s[%sVisionX%s] %sInvalid GitHub response.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, TEXT_COLOR), player or root, 255, 255, 255, true)
             return
         end
 
@@ -92,7 +88,7 @@ function queueGitRepo(isManual, player)
         end
 
         if filesFetched == 0 then
-            outputChatBox(string.format("%s[%sVisionX%s] %sNo updates found.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), target, 255, 255, 255, true)
+            outputChatBox(string.format("%s[%sVisionX%s] %sNo updates found.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), player or root, 255, 255, 255, true)
             return
         end
 
@@ -121,15 +117,9 @@ end
 -- PROCESS DOWNLOADED FILES
 ------------------------------------------------------------
 function processFiles(dataToSave, player)
-    -- FIXED: Safer check for the player element inside the async callback
-    local target = (player and isElement(player)) and player or root
-    
     local modifiedFiles = {}
     local localData = loadDirectoryData()
     local parsedData = localData and fromJSON(localData) or {}
-
-    -- Ensure the backup directory exists before we start
-    ensureAddonsFolder() 
 
     for fileName, remoteData in pairs(remoteFiles) do
         local updateRequired = false
@@ -164,24 +154,20 @@ function processFiles(dataToSave, player)
 
     if #modifiedFiles > 0 then
         fetchRemote(REPO_COMMITS_URL, function(response)
-            -- FIXED: Safer check for the player element inside the async callback
-            local innerTarget = (player and isElement(player)) and player or root
-            
             local commits = response and fromJSON(response)
             local title = commits and commits[1] and commits[1].commit and commits[1].commit.message or "Unknown Update"
 
-            outputChatBox(string.format("%s[%sVisionX%s] %sUpdated successfully!%s (%d files changed)", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR, #modifiedFiles), innerTarget, 255, 255, 255, true)
-            outputChatBox(string.format("%s[%sVisionX%s] %sCommit:%s %s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR, title), innerTarget, 255, 255, 255, true)
+            outputChatBox(string.format("%s[%sVisionX%s] %sUpdated successfully!%s (%d files changed)", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR, #modifiedFiles), player or root, 255, 255, 255, true)
+            outputChatBox(string.format("%s[%sVisionX%s] %sCommit:%s %s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR, title), player or root, 255, 255, 255, true)
 
-            -- FIXED: Used 'resourceRoot' instead of the undefined 'resource'
-            if hasObjectPermissionTo(resourceRoot, "function.restartResource") then
-                restartResource(resourceRoot)
+            if hasObjectPermissionTo(resource, "function.restartResource") then
+                restartResource(resource)
             else
-                outputChatBox(string.format("%s[%sVisionX%s] %sRestart manually to apply updates.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), innerTarget, 255, 255, 255, true)
+                outputChatBox(string.format("%s[%sVisionX%s] %sRestart manually to apply updates.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), player or root, 255, 255, 255, true)
             end
         end)
     else
-        outputChatBox(string.format("%s[%sVisionX%s] %sVisionX is already up to date.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), target, 255, 255, 255, true)
+        outputChatBox(string.format("%s[%sVisionX%s] %sVisionX is already up to date.%s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, TEXT_COLOR), player or root, 255, 255, 255, true)
     end
 end
 
@@ -189,16 +175,11 @@ end
 -- SAVE / LOAD (auto-create addons folder if missing)
 ------------------------------------------------------------
 
--- Helper function to ensure 'addons' and 'addons/backups' folders exist
+-- Helper function to ensure 'addons' folder exists
 local function ensureAddonsFolder()
     if not fileExists("addons") then
         fileCreate("addons/.keep")  -- creates folder via placeholder file
         fileDelete("addons/.keep")
-    end
-    -- FIXED: Added check for the backups folder
-    if not fileExists("addons/backups") then
-        fileCreate("addons/backups/.keep")
-        fileDelete("addons/backups/.keep")
     end
 end
 
@@ -210,7 +191,7 @@ function saveDirectoryData(data)
         fileWrite(file, data)
         fileClose(file)
     else
-        outputDebugString("[VisionX] Failed to create addons/autoupter.json", 1)
+        outputDebugString("[VisionX] Failed to create addons/autoupdater.json", 1)
     end
 end
 
