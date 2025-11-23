@@ -14,7 +14,7 @@
         <right name="function.restartResource" access="true" />
         
         <right name="function.fileCreate" access="true" />
-        <right name="function.fileWrite" access="true" /W>
+        <right name="function.fileWrite" access="true" />
         <right name="function.fileClose" access="true" />
         <right name="function.xmlLoadFile" access="true" />
         <right name="function.xmlSaveFile" access="true" />
