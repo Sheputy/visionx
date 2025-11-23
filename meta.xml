@@ -1,25 +1,24 @@
 <meta>
-    <info author="Corrupt" name="VisionX" version="3.2.3" type="VisionX - Advanced Draw Distance Script" />
+    <info author="Corrupt" name="VisionX" version="3.2.3" type="script" />
     
-    <!-- Scripts -->
     <script src="server.lua" type="server" />
     <script src="client.lua" type="client" />
     <script src="builder_server.lua" type="server" />
     <script src="autoupdater.lua" type="server" />
-    <!-- Essential data file for categorization -->
     <file src="objects.xml" />
-
-    <!-- Allow other server scripts to access the categorization data -->
     <export function="getCategoryLookup" type="server" />
-
-    <!-- Settings will be saved here -->
     <file src="settings.json" />
 
-
-    <!-- Auto Updater Permissions -->
     <aclrequest>
-		<right name="function.fetchRemote" access="true" />
-		<right name="function.restartResource" access="true" />
-    <right name="general.ModifyOtherObjects" access="true" />
-	</aclrequest>
+        <right name="function.fetchRemote" access="true" />
+        <right name="function.restartResource" access="true" />
+        
+        <right name="function.fileCreate" access="true" />
+        <right name="function.fileWrite" access="true" /W>
+        <right name="function.fileClose" access="true" />
+        <right name="function.xmlLoadFile" access="true" />
+        <right name="function.xmlSaveFile" access="true" />
+        <right name="function.xmlCreateChild" access="true" />
+        <right name="general.ModifyOtherObjects" access="true" />
+    </aclrequest>
 </meta>
