@@ -1,5 +1,5 @@
 <meta>
-    <info author="Corrupt" name="VisionX" version="3.2.0" type="VisionX - Advanced Draw Distance Script" />
+    <info author="Corrupt" name="VisionX" version="3.2.3" type="VisionX - Advanced Draw Distance Script" />
     
     <!-- Scripts -->
     <script src="server.lua" type="server" />
@@ -20,5 +20,6 @@
     <aclrequest>
 		<right name="function.fetchRemote" access="true" />
 		<right name="function.restartResource" access="true" />
+    <right name="general.ModifyOtherObjects" access="true" />
 	</aclrequest>
 </meta>
