@@ -3,8 +3,8 @@
 --  VisionX Auto-Updater (Raw)
 --  Repository: https://github.com/Sheputy/visionx
 --  Description: Checks raw meta.xml for version changes.
--- Changelog:
---  - v3.2.4 - Improved backup handling and fixed "No update available Error".
+--  Changelog:
+--   - v3.2.5 - Added 24h timer & Critical Admin checks for Build/Update.
 ============================================================
 ]]
 
@@ -12,7 +12,7 @@
 -- CONFIGURATION
 ------------------------------------------------------------
 local autoUpdate = true
-local AUTO_UPDATE_INTERVAL = 3600000 -- 1 Hour
+local AUTO_UPDATE_INTERVAL = 24 * 60 * 60 * 1000 -- 24 Hours (in milliseconds)
 local GITHUB_RAW_URL = "https://raw.githubusercontent.com/Sheputy/visionx/main/"
 
 local BRAND_COLOR = "#0DBCFF"
@@ -23,7 +23,7 @@ local INFO_COLOR = "#FFA64C"
 ------------------------------------------------------------
 -- STATE
 ------------------------------------------------------------
-local currentVersion = "3.2.4"
+local currentVersion = "0.0.0" -- Will be overwritten by getLocalVersion
 local resourceName = getResourceName(getThisResource())
 
 ------------------------------------------------------------
@@ -59,12 +59,39 @@ local function isNewer(v1, v2)
 end
 
 ------------------------------------------------------------
--- STARTUP
+-- STARTUP & PERMISSION CHECK
 ------------------------------------------------------------
 addEventHandler("onResourceStart", resourceRoot, function()
     getLocalVersion()
     outputChatBox(string.format("%s[%sVisionX%s] %sUpdater initialized. Current Version: %s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, currentVersion), root, 255, 255, 255, true)
     
+    -- 1. CRITICAL PERMISSION CHECK
+    -- We check for 'general.ModifyOtherObjects' because the Builder needs to edit other map files.
+    local permissionsNeeded = {
+        "function.fetchRemote",
+        "function.fileCreate",
+        "function.fileWrite",
+        "function.restartResource", 
+        "general.ModifyOtherObjects" -- Required for 'vx build' to save into map resources
+    }
+    
+    local missingPerms = false
+    for _, perm in ipairs(permissionsNeeded) do
+        if not hasObjectPermissionTo(getThisResource(), perm, false) then
+            missingPerms = true
+            break
+        end
+    end
+
+    if missingPerms then
+        outputChatBox(string.format("%s[%sVisionX%s] #FF0000CRITICAL ERROR: Missing Admin Rights!", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
+        outputChatBox("#FF0000VisionX needs Admin to Update itself AND to Save scripts to your maps.", root, 255, 255, 255, true)
+        outputChatBox("#FF0000Please run: #FFFFFF/aclrequest allow " .. resourceName .. " all", root, 255, 255, 255, true)
+        outputChatBox("#FF0000Or add 'resource." .. resourceName .. "' to the Admin ACL group manually.", root, 255, 255, 255, true)
+        outputServerLog("[VisionX] CRITICAL: Missing permissions. 'vx build' and Auto-Update will fail. Add resource." .. resourceName .. " to Admin ACL.")
+    end
+
+    -- 2. START TIMER
     if autoUpdate then
         checkForUpdates()
         setTimer(checkForUpdates, AUTO_UPDATE_INTERVAL, 0)
@@ -76,7 +103,9 @@ end)
 ------------------------------------------------------------
 function checkForUpdates(isManual, player)
     if not hasObjectPermissionTo(resource, "function.fetchRemote") then
-        outputChatBox(string.format("%s[%sVisionX%s] %sMissing fetchRemote permission.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), root, 255, 255, 255, true)
+        if isManual then 
+            outputChatBox(string.format("%s[%sVisionX%s] %sCannot check for updates: Missing fetchRemote permission.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), player, 255, 255, 255, true)
+        end
         return
     end
 
@@ -163,10 +192,13 @@ function processUpdate(metaContent)
             downloaded = downloaded + 1
             if downloaded >= total then
                 outputChatBox(string.format("%s[%sVisionX%s] %sUpdate complete! Restarting...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), root, 255, 255, 255, true)
+                
+                -- AUTO-RESTART LOGIC
                 if hasObjectPermissionTo(resource, "function.restartResource") then
                     setTimer(function() restartResource(resource) end, 1000, 1)
                 else
-                    outputChatBox(string.format("%s[%sVisionX%s] %sPlease restart manually.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), root, 255, 255, 255, true)
+                    -- This technically shouldn't happen if they listened to the startup warning, but just in case:
+                    outputChatBox(string.format("%s[%sVisionX%s] %sRestart manually to apply updates (Missing restart permission).", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), root, 255, 255, 255, true)
                 end
             end
         end)
