@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.5 (Fixed Githup Auto Updater)
+--  Version: 3.2.6 (Fixed Githup Auto Updater)
 --
 --  CHANGELOG:
 --  - Standalone Template updated to include /vx and X to disable. (Requested)
@@ -45,7 +45,7 @@ addEventHandler("visionx:saveToMap", root, function(mapName, scriptContent)
         return
     end
 
-    local fileName = "visionx_client.lua"
+    local fileName = "visionx.lua"
     local filePath = ":" .. mapName .. "/" .. fileName
 
     -- 1. Create/Overwrite the Lua file

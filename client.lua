@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Advanced - Client-Side Logic
---  Version: 3.2.5 (Fixed Githup Auto Updater)
+--  Version: 3.2.6 
 --
 --  CHANGELOG:
 --  - Added Export UI Panel for saving scripts to maps.
