@@ -1,10 +1,11 @@
 --[[
 ============================================================
---  VisionX Auto-Updater (Raw)
+--  VisionX Auto-Updater (Final Safe Version)
 --  Repository: https://github.com/Sheputy/visionx
---  Description: Checks raw meta.xml for version changes.
---  Changelog:
---   - v3.2.5 - Added 24h timer & Critical Admin checks for Build/Update.
+--  Description: 
+--    1. Waits 5 mins on start (Anti-Loop).
+--    2. Downloads to .temp files first (Anti-Corruption).
+--    3. Aborts if local version is 0.0.0 (Anti-Death-Loop).
 ============================================================
 ]]
 
@@ -12,22 +13,22 @@
 -- CONFIGURATION
 ------------------------------------------------------------
 local autoUpdate = true
-local AUTO_UPDATE_INTERVAL = 24 * 60 * 60 * 1000 -- 24 Hours (in milliseconds)
+local STARTUP_DELAY = 5 * 60 * 1000      -- 5 Minutes
+local AUTO_UPDATE_INTERVAL = 24 * 60 * 60 * 1000 -- 24 Hours
 local GITHUB_RAW_URL = "https://raw.githubusercontent.com/Sheputy/visionx/main/"
 
 local BRAND_COLOR = "#0DBCFF"
 local TEXT_COLOR = "#FFFFFF"
-local FAIL_COLOR = "#FF6464"
 local INFO_COLOR = "#FFA64C"
 
 ------------------------------------------------------------
 -- STATE
 ------------------------------------------------------------
-local currentVersion = "0.0.0" -- Will be overwritten by getLocalVersion
+local currentVersion = "0.0.0"
 local resourceName = getResourceName(getThisResource())
 
 ------------------------------------------------------------
--- UTILS: GET LOCAL VERSION
+-- UTILS
 ------------------------------------------------------------
 local function getLocalVersion()
     local meta = xmlLoadFile("meta.xml")
@@ -37,14 +38,12 @@ local function getLocalVersion()
             currentVersion = xmlNodeGetAttribute(info, "version") or "0.0.0"
         end
         xmlUnloadFile(meta)
+    else
+        currentVersion = "0.0.0" -- Meta is missing or corrupt
     end
     return currentVersion
 end
 
-------------------------------------------------------------
--- UTILS: VERSION COMPARISON
-------------------------------------------------------------
--- Returns true if v1 (remote) is greater than v2 (local)
 local function isNewer(v1, v2)
     if v1 == v2 then return false end
     local v1parts, v2parts = {}, {}
@@ -59,22 +58,22 @@ local function isNewer(v1, v2)
 end
 
 ------------------------------------------------------------
--- STARTUP & PERMISSION CHECK
+-- STARTUP
 ------------------------------------------------------------
 addEventHandler("onResourceStart", resourceRoot, function()
     getLocalVersion()
-    outputChatBox(string.format("%s[%sVisionX%s] %sUpdater initialized. Current Version: %s", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, currentVersion), root, 255, 255, 255, true)
     
-    -- 1. CRITICAL PERMISSION CHECK
-    -- We check for 'general.ModifyOtherObjects' because the Builder needs to edit other map files.
-    local permissionsNeeded = {
-        "function.fetchRemote",
-        "function.fileCreate",
-        "function.fileWrite",
-        "function.restartResource", 
-        "general.ModifyOtherObjects" -- Required for 'vx build' to save into map resources
-    }
-    
+    -- === LOOP PROTECTION ===
+    -- If version is 0.0.0, it means meta.xml is broken. 
+    -- We MUST NOT update, or we will infinite loop.
+    if currentVersion == "0.0.0" then
+        outputServerLog("[VisionX] CRITICAL ERROR: Version detected as 0.0.0 (meta.xml corrupt). Updater DISABLED to prevent loops.")
+        outputChatBox("[VisionX] #FF0000CRITICAL: meta.xml is corrupt. Please reinstall resource manually.", root, 255, 255, 255, true)
+        return
+    end
+
+    -- PERMISSION CHECK
+    local permissionsNeeded = { "function.fetchRemote", "function.fileCreate", "function.fileWrite", "function.restartResource", "function.fileRename", "function.fileDelete" }
     local missingPerms = false
     for _, perm in ipairs(permissionsNeeded) do
         if not hasObjectPermissionTo(getThisResource(), perm, false) then
@@ -84,16 +83,13 @@ addEventHandler("onResourceStart", resourceRoot, function()
     end
 
     if missingPerms then
-        outputChatBox(string.format("%s[%sVisionX%s] #FF0000CRITICAL ERROR: Missing Admin Rights!", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
-        outputChatBox("#FF0000VisionX needs Admin to Update itself AND to Save scripts to your maps.", root, 255, 255, 255, true)
-        outputChatBox("#FF0000Please run: #FFFFFF/aclrequest allow " .. resourceName .. " all", root, 255, 255, 255, true)
-        outputChatBox("#FF0000Or add 'resource." .. resourceName .. "' to the Admin ACL group manually.", root, 255, 255, 255, true)
-        outputServerLog("[VisionX] CRITICAL: Missing permissions. 'vx build' and Auto-Update will fail. Add resource." .. resourceName .. " to Admin ACL.")
+        outputChatBox(string.format("%s[%sVisionX%s] #FF0000Missing Admin Rights. Updater disabled.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
+        return
     end
 
-    -- 2. START TIMER
     if autoUpdate then
-        checkForUpdates()
+        outputServerLog("[VisionX] Updater armed. Waiting "..(STARTUP_DELAY/1000/60).." mins to check.")
+        setTimer(checkForUpdates, STARTUP_DELAY, 1)
         setTimer(checkForUpdates, AUTO_UPDATE_INTERVAL, 0)
     end
 end)
@@ -102,114 +98,100 @@ end)
 -- UPDATE CHECKER
 ------------------------------------------------------------
 function checkForUpdates(isManual, player)
-    if not hasObjectPermissionTo(resource, "function.fetchRemote") then
-        if isManual then 
-            outputChatBox(string.format("%s[%sVisionX%s] %sCannot check for updates: Missing fetchRemote permission.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), player, 255, 255, 255, true)
-        end
-        return
-    end
+    -- Double Check: Never run if corrupt
+    if currentVersion == "0.0.0" then return end
 
     if isManual then
         outputChatBox(string.format("%s[%sVisionX%s] %sChecking for updates...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
     end
 
-    -- Fetch remote meta.xml with cache buster
     local metaURL = GITHUB_RAW_URL .. "meta.xml?cb=" .. getTickCount()
-    
     fetchRemote(metaURL, function(data, err)
         if err ~= 0 or not data then
-            if isManual then
-                outputChatBox(string.format("%s[%sVisionX%s] %sFailed to fetch remote meta.xml (Error %d)", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR, err), player, 255, 255, 255, true)
-            end
+            if isManual then outputChatBox("[VisionX] Check failed. Error: "..err, player, 255, 100, 100, true) end
             return
         end
 
-        -- Extract version from remote XML string
         local remoteVer = data:match('version="([^"]+)"')
-        
-        if remoteVer then
-            if isNewer(remoteVer, currentVersion) then
-                outputChatBox(string.format("%s[%sVisionX%s] %sUpdate found! (%s -> %s). Downloading...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, currentVersion, remoteVer), root, 255, 255, 255, true)
-                processUpdate(data) -- Pass the remote meta content to parse file list
-            else
-                if isManual then
-                    outputChatBox(string.format("%s[%sVisionX%s] %sAlready up to date.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
-                end
-            end
-        else
-            outputDebugString("[VisionX] Could not parse remote version string.")
+        if remoteVer and isNewer(remoteVer, currentVersion) then
+            outputChatBox(string.format("%s[%sVisionX%s] %sUpdate found (%s). Downloading...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, remoteVer), root, 255, 255, 255, true)
+            processUpdate(data)
+        elseif isManual then
+            outputChatBox(string.format("%s[%sVisionX%s] %sUp to date.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
         end
     end)
 end
 
 ------------------------------------------------------------
--- DOWNLOAD LOGIC
+-- SAFE DOWNLOAD LOGIC
 ------------------------------------------------------------
 function processUpdate(metaContent)
     local filesToDownload = {}
-    
-    -- Extract all script/file src paths from the raw meta content
-    -- Matches <script src="xyz" /> and <file src="xyz" />
-    for path in metaContent:gmatch('src="([^"]+)"') do
-        table.insert(filesToDownload, path)
-    end
-    
-    -- Always include meta.xml itself
+    for path in metaContent:gmatch('src="([^"]+)"') do table.insert(filesToDownload, path) end
     table.insert(filesToDownload, "meta.xml")
 
     if #filesToDownload == 0 then return end
 
-    local downloaded = 0
+    local downloadedCount = 0
     local total = #filesToDownload
-    
-    -- Ensure backup directory exists
-    if not fileExists("addons/backups") then
-        local dummy = fileCreate("addons/backups/.keep")
-        if dummy then fileClose(dummy) end
-    end
+    local tempPrefix = "temp_update_"
 
     for _, fileName in ipairs(filesToDownload) do
         local url = GITHUB_RAW_URL .. fileName .. "?cb=" .. getTickCount()
         
         fetchRemote(url, function(data, err)
             if err == 0 and data then
-                -- Backup Logic
-                if fileExists(fileName) then
-                    if fileExists("addons/backups/"..fileName..".bak") then fileDelete("addons/backups/"..fileName..".bak") end
-                    fileRename(fileName, "addons/backups/"..fileName..".bak")
-                end
-
-                -- Write New File
-                local file = fileCreate(fileName)
+                -- DOWNLOAD TO TEMP FILE FIRST
+                local tempName = tempPrefix .. fileName:gsub("/", "_") 
+                if fileExists(tempName) then fileDelete(tempName) end
+                
+                local file = fileCreate(tempName)
                 if file then
                     fileWrite(file, data)
                     fileClose(file)
+                    downloadedCount = downloadedCount + 1
                 end
-            else
-                outputDebugString("[VisionX] Failed to download: " .. fileName)
             end
 
-            downloaded = downloaded + 1
-            if downloaded >= total then
-                outputChatBox(string.format("%s[%sVisionX%s] %sUpdate complete! Restarting...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), root, 255, 255, 255, true)
-                
-                -- AUTO-RESTART LOGIC
-                if hasObjectPermissionTo(resource, "function.restartResource") then
-                    setTimer(function() restartResource(resource) end, 1000, 1)
-                else
-                    -- This technically shouldn't happen if they listened to the startup warning, but just in case:
-                    outputChatBox(string.format("%s[%sVisionX%s] %sRestart manually to apply updates (Missing restart permission).", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, FAIL_COLOR), root, 255, 255, 255, true)
-                end
+            if downloadedCount >= total then
+                applyUpdate(filesToDownload, tempPrefix)
             end
         end)
     end
 end
 
-------------------------------------------------------------
--- MANUAL COMMAND
-------------------------------------------------------------
-addCommandHandler("vx", function(player, cmd, arg)
-    if arg and arg:lower() == "update" then
-        checkForUpdates(true, player)
+function applyUpdate(fileList, tempPrefix)
+    outputServerLog("[VisionX] Download complete. Applying update...")
+    
+    if not fileExists("addons/backups") then
+        local dummy = fileCreate("addons/backups/.keep")
+        if dummy then fileClose(dummy) end
     end
+
+    for _, fileName in ipairs(fileList) do
+        local tempName = tempPrefix .. fileName:gsub("/", "_")
+        
+        if fileExists(tempName) then
+            -- Create Backup
+            if fileExists(fileName) then
+                if fileExists("addons/backups/"..fileName..".bak") then fileDelete("addons/backups/"..fileName..".bak") end
+                fileRename(fileName, "addons/backups/"..fileName..".bak")
+            end
+            
+            -- Replace File
+            if fileExists(fileName) then fileDelete(fileName) end
+            fileRename(tempName, fileName)
+        end
+    end
+
+    outputChatBox(string.format("%s[%sVisionX%s] %sUpdate applied. Restarting...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), root, 255, 255, 255, true)
+    
+    if hasObjectPermissionTo(resource, "function.restartResource") then
+        setTimer(function() restartResource(resource) end, 2000, 1)
+    end
+end
+
+-- Manual command
+addCommandHandler("vx", function(player, cmd, arg)
+    if arg and arg:lower() == "update" then checkForUpdates(true, player) end
 end)
