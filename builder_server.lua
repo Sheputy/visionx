@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.3 (Automatic File Saving)
+--  Version: 3.2.4 (Fixed Githup Auto Updater)
 --
 --  CHANGELOG:
 --  - Standalone Template updated to include /vx and X to disable. (Requested)
@@ -128,7 +128,7 @@ local function generateStandaloneScript(settings, includedString, otherString)
 --
 --  VisionX Standalone - Generated for Map Resource
 --  Author: Corrupt
---  Version: 3.2.3 (Core Logic + Startup Info)
+--  Version: 3.2.4 (Core Logic + Startup Info)
 --
 --  This is a self-contained, core-only script. 
 --  It includes spatial grid, clone limits, and

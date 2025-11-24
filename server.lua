@@ -3,10 +3,10 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.3 (Automatic File Saving)
+--  Version: 3.2.4 (Fixed Githup Auto Updater)
 --
 --  CHANGELOG:
---  - Synced version number to 3.2.3
+--  - None
 --
 ============================================================
 ]]
