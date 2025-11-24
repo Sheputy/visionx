@@ -57,6 +57,19 @@ local function isNewer(v1, v2)
     return false
 end
 
+-- Helper to safely check Admin Group status
+local function isResourceInAdminGroup()
+    if not hasObjectPermissionTo(getThisResource(), "function.aclGetGroup", false) then
+        return false -- We can't even check, so assume 'no'
+    end
+    
+    local adminGroup = aclGetGroup("Admin")
+    if adminGroup and isObjectInACLGroup("resource."..resourceName, adminGroup) then
+        return true
+    end
+    return false
+end
+
 ------------------------------------------------------------
 -- STARTUP
 ------------------------------------------------------------
@@ -64,15 +77,18 @@ addEventHandler("onResourceStart", resourceRoot, function()
     getLocalVersion()
     
     -- === LOOP PROTECTION ===
-    -- If version is 0.0.0, it means meta.xml is broken. 
-    -- We MUST NOT update, or we will infinite loop.
     if currentVersion == "0.0.0" then
         outputServerLog("[VisionX] CRITICAL ERROR: Version detected as 0.0.0 (meta.xml corrupt). Updater DISABLED to prevent loops.")
         outputChatBox("[VisionX] #FF0000CRITICAL: meta.xml is corrupt. Please reinstall resource manually.", root, 255, 255, 255, true)
         return
     end
 
-    -- PERMISSION CHECK
+    -- 1. GENERAL ADMIN CHECK (Soft Warning)
+    if not isResourceInAdminGroup() then
+        outputChatBox(string.format("%s[%sVisionX%s] #FF0000Missing admin permission, some features may be unavailable.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
+    end
+
+    -- 2. CRITICAL PERMISSIONS CHECK (Updater Functionality)
     local permissionsNeeded = { "function.fetchRemote", "function.fileCreate", "function.fileWrite", "function.restartResource", "function.fileRename", "function.fileDelete" }
     local missingPerms = false
     for _, perm in ipairs(permissionsNeeded) do
@@ -83,8 +99,9 @@ addEventHandler("onResourceStart", resourceRoot, function()
     end
 
     if missingPerms then
-        outputChatBox(string.format("%s[%sVisionX%s] #FF0000Missing Admin Rights. Updater disabled.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
-        return
+        -- Tell them exactly how to fix it
+        outputChatBox(string.format("%s[%sVisionX%s] #FFA64CUpdater disabled. Please run: #FFFFFF/aclrequest allow %s all", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, resourceName), root, 255, 255, 255, true)
+        return -- Stop here, updater cannot run
     end
 
     if autoUpdate then

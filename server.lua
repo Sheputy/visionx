@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.6
+--  Version: 3.2.7
 --
 --  CHANGELOG:
 --  - None

@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.6 (Fixed Githup Auto Updater)
+--  Version: 3.2.7
 --
 --  CHANGELOG:
 --  - Standalone Template updated to include /vx and X to disable. (Requested)
