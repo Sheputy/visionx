@@ -17,9 +17,11 @@ local STARTUP_DELAY = 5 * 60 * 1000      -- 5 Minutes
 local AUTO_UPDATE_INTERVAL = 24 * 60 * 60 * 1000 -- 24 Hours
 local GITHUB_RAW_URL = "https://raw.githubusercontent.com/Sheputy/visionx/main/"
 
-local BRAND_COLOR = "#0DBCFF"
-local TEXT_COLOR = "#FFFFFF"
-local INFO_COLOR = "#FFA64C"
+-- UX Colors
+local BRAND_COLOR = "#0DBCFF"   -- Blue
+local TEXT_COLOR  = "#FFFFFF"   -- White
+local INFO_COLOR  = "#FFA64C"   -- Orange (feedback)
+local ERROR_COLOR = "#FF4C4C"   -- Red (errors)
 
 ------------------------------------------------------------
 -- STATE
@@ -57,10 +59,9 @@ local function isNewer(v1, v2)
     return false
 end
 
--- Helper to safely check Admin Group status
 local function isResourceInAdminGroup()
     if not hasObjectPermissionTo(getThisResource(), "function.aclGetGroup", false) then
-        return false -- We can't even check, so assume 'no'
+        return false
     end
     
     local adminGroup = aclGetGroup("Admin")
@@ -78,30 +79,36 @@ addEventHandler("onResourceStart", resourceRoot, function()
     
     -- === LOOP PROTECTION ===
     if currentVersion == "0.0.0" then
-        outputServerLog("[VisionX] CRITICAL ERROR: Version detected as 0.0.0 (meta.xml corrupt). Updater DISABLED to prevent loops.")
-        outputChatBox("[VisionX] #FF0000CRITICAL: meta.xml is corrupt. Please reinstall resource manually.", root, 255, 255, 255, true)
+        outputChatBox(
+            string.format(
+                "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FFA64CFirst Install Detected.#FFFFFF Run: #FFFF00/aclrequest allow %s all",
+                resourceName
+            ),
+            root, 255, 255, 255, true
+        )
+        outputChatBox(
+            string.format(
+                "#FFA64C> #FFFFFFIf that fails, add #FFFF00resource.%s #FFFFFFto the #FFA64CAdmin#FFFFFF group.",
+                resourceName
+            ),
+            root, 255, 255, 255, true
+        )
         return
     end
 
-    -- 1. GENERAL ADMIN CHECK (Soft Warning)
-    if not isResourceInAdminGroup() then
-        outputChatBox(string.format("%s[%sVisionX%s] #FF0000Missing admin permission, some features may be unavailable.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR), root, 255, 255, 255, true)
-    end
+    -- 2. CRITICAL PERMISSIONS CHECK
+    local resource = getThisResource()
+    local perm = "function.fetchRemote"
 
-    -- 2. CRITICAL PERMISSIONS CHECK (Updater Functionality)
-    local permissionsNeeded = { "function.fetchRemote", "function.fileCreate", "function.fileWrite", "function.restartResource", "function.fileRename", "function.fileDelete" }
-    local missingPerms = false
-    for _, perm in ipairs(permissionsNeeded) do
-        if not hasObjectPermissionTo(getThisResource(), perm, false) then
-            missingPerms = true
-            break
-        end
-    end
-
-    if missingPerms then
-        -- Tell them exactly how to fix it
-        outputChatBox(string.format("%s[%sVisionX%s] #FFA64CUpdater disabled. Please run: #FFFFFF/aclrequest allow %s all", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, resourceName), root, 255, 255, 255, true)
-        return -- Stop here, updater cannot run
+    if not hasObjectPermissionTo(resource, perm) then
+        outputChatBox(
+            string.format(
+                "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FF4C4CError:#FFFFFF Missing permission '#FFA64C%s#FFFFFF'. Run: #FFFF00/aclrequest allow %s %s",
+                perm, getResourceName(resource), perm
+            ),
+            root, 255, 255, 255, true
+        )
+        return
     end
 
     if autoUpdate then
@@ -115,26 +122,68 @@ end)
 -- UPDATE CHECKER
 ------------------------------------------------------------
 function checkForUpdates(isManual, player)
-    -- Double Check: Never run if corrupt
+
+    -- Permission check per-call
+    local perm = "function.fetchRemote"
+    if not hasObjectPermissionTo(getThisResource(), perm) then
+        if isManual then
+            outputChatBox(
+                string.format(
+                    "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FF4C4CError:#FFFFFF Missing permission '#FFA64C%s#FFFFFF'. Run: #FFFF00/aclrequest allow %s all",
+                    perm, resourceName, perm
+                ),
+                player, 255, 255, 255, true
+            )
+        else
+            outputChatBox(
+                string.format(
+                    "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FF4C4CAuto-Update Disabled:#FFFFFF Missing '#FFA64C%s#FFFFFF'.",
+                    perm
+                ),
+                root, 255, 255, 255, true
+            )
+        end
+        return
+    end
+
+    -- Prevent running on corrupted meta
     if currentVersion == "0.0.0" then return end
 
     if isManual then
-        outputChatBox(string.format("%s[%sVisionX%s] %sChecking for updates...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
+        outputChatBox(
+            "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FFA64CChecking for updates...#FFFFFF",
+            player, 255, 255, 255, true
+        )
     end
 
     local metaURL = GITHUB_RAW_URL .. "meta.xml?cb=" .. getTickCount()
+
     fetchRemote(metaURL, function(data, err)
         if err ~= 0 or not data then
-            if isManual then outputChatBox("[VisionX] Check failed. Error: "..err, player, 255, 100, 100, true) end
+            if isManual then
+                outputChatBox(
+                    "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FF4C4CUpdate check failed.#FFFFFF",
+                    player, 255, 255, 255, true
+                )
+            end
             return
         end
 
         local remoteVer = data:match('version="([^"]+)"')
         if remoteVer and isNewer(remoteVer, currentVersion) then
-            outputChatBox(string.format("%s[%sVisionX%s] %sUpdate found (%s). Downloading...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR, remoteVer), root, 255, 255, 255, true)
+            outputChatBox(
+                string.format(
+                    "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FFA64CUpdate found:#FFFFFF version %s. Downloading...",
+                    remoteVer
+                ),
+                root, 255, 255, 255, true
+            )
             processUpdate(data)
         elseif isManual then
-            outputChatBox(string.format("%s[%sVisionX%s] %sUp to date.", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), player, 255, 255, 255, true)
+            outputChatBox(
+                "#FFFFFF[#0DBCFFVisionX#FFFFFF] #65FF65You're already on the latest version.#FFFFFF",
+                player, 255, 255, 255, true
+            )
         end
     end)
 end
@@ -158,8 +207,7 @@ function processUpdate(metaContent)
         
         fetchRemote(url, function(data, err)
             if err == 0 and data then
-                -- DOWNLOAD TO TEMP FILE FIRST
-                local tempName = tempPrefix .. fileName:gsub("/", "_") 
+                local tempName = tempPrefix .. fileName:gsub("/", "_")
                 if fileExists(tempName) then fileDelete(tempName) end
                 
                 local file = fileCreate(tempName)
@@ -177,6 +225,9 @@ function processUpdate(metaContent)
     end
 end
 
+------------------------------------------------------------
+-- APPLY UPDATE
+------------------------------------------------------------
 function applyUpdate(fileList, tempPrefix)
     outputServerLog("[VisionX] Download complete. Applying update...")
     
@@ -189,26 +240,33 @@ function applyUpdate(fileList, tempPrefix)
         local tempName = tempPrefix .. fileName:gsub("/", "_")
         
         if fileExists(tempName) then
-            -- Create Backup
             if fileExists(fileName) then
-                if fileExists("addons/backups/"..fileName..".bak") then fileDelete("addons/backups/"..fileName..".bak") end
+                if fileExists("addons/backups/"..fileName..".bak") then
+                    fileDelete("addons/backups/"..fileName..".bak")
+                end
                 fileRename(fileName, "addons/backups/"..fileName..".bak")
             end
             
-            -- Replace File
             if fileExists(fileName) then fileDelete(fileName) end
             fileRename(tempName, fileName)
         end
     end
 
-    outputChatBox(string.format("%s[%sVisionX%s] %sUpdate applied. Restarting...", TEXT_COLOR, BRAND_COLOR, TEXT_COLOR, INFO_COLOR), root, 255, 255, 255, true)
+    outputChatBox(
+        "#FFFFFF[#0DBCFFVisionX#FFFFFF] #FFA64CUpdate applied.#FFFFFF Restarting...",
+        root, 255, 255, 255, true
+    )
     
     if hasObjectPermissionTo(resource, "function.restartResource") then
         setTimer(function() restartResource(resource) end, 2000, 1)
     end
 end
 
--- Manual command
+------------------------------------------------------------
+-- MANUAL COMMAND
+------------------------------------------------------------
 addCommandHandler("vx", function(player, cmd, arg)
-    if arg and arg:lower() == "update" then checkForUpdates(true, player) end
+    if arg and arg:lower() == "update" then
+        checkForUpdates(true, player)
+    end
 end)

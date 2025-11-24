@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.2.7
+--  Version: 3.2.8
 --
 --  CHANGELOG:
 --  - Standalone Template updated to include /vx and X to disable. (Requested)

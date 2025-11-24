@@ -3,7 +3,7 @@
 --
 --  Author: Corrupt
 --  VisionX Advanced - Client-Side Logic
---  Version: 3.2.7 
+--  Version: 3.2.8 
 --
 --  CHANGELOG:
 --  - Added Export UI Panel for saving scripts to maps.
