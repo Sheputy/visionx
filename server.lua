@@ -1,12 +1,16 @@
 --[[
 ============================================================
 --
---  Author: Corrupt
---  VisionX Builder - Server-Side
---  Version: 3.2.8
+--  Author: Corrupt
+--  VisionX Builder - Server-Side
+--  Version: 3.3.0 (Massive performance overhaul, LOD & FarClip)
 --
---  CHANGELOG:
---  - None
+--  CHANGELOG: (3.2.8 → 3.3.0)
+--  - Added builder endpoints for saving generated standalone scripts to map resources.
+--  - Centralized default settings and introduced priority categories (Land Masses, Trees, Plants).
+--  - Increased default MIN_VIEW_RANGE and tuned LOD handling for large maps.
+--  - Added CLONE_LIMIT enforcement and safer save/ACL checks for builder operations.
+--  - General performance improvements and XML/group mapping refinements.
 --
 ============================================================
 ]]
@@ -15,94 +19,149 @@
 -- // SERVER CONFIGURATION & DATA
 -- ////////////////////////////////////////////////////////////////////////////
 
--- Default settings, used if settings.json is missing or corrupt.
 local serverConfig = {
     MAX_VIEW_RANGE = 1000,
-    MIN_VIEW_RANGE = 250,
+    MIN_VIEW_RANGE = 300,
     CREATION_BATCH_LIMIT = 100,
     UPDATE_TICK_RATE = 500,
     SPATIAL_GRID_CELL_SIZE = 200,
+    CLONE_LIMIT = 500,
     DEBUG_MODE = false,
+    -- [UPDATED] Default Priorities
+    PRIORITY_HIGH = "Land Masses",
+    PRIORITY_MED = "Trees", -- Updated from Nature
+    PRIORITY_LOW = "Plants",
+    CUSTOM_PRIORITY_IDS = "",
 }
-
 
 local categoryLookup = {}
-local decorationGroups = {
-    -- From "Beach and Sea"
-    ["Ships, Docks, and Piers"] = true, ["General"] = true,
-    -- From "buildings"
-    ["Factories and Warehouses"] = true, ["Stores and Shops"] = true, ["Graveyard"] = true,
-    ["Houses and Apartments"] = true, ["Offices and Skyscrapers"] = true, ["Other Buildings"] = true,
-    ["Restaurants and Hotels"] = true, ["Sports and Stadium Objects"] = true, ["Bars, Clubs, and Casinos"] = true,
-    -- From "industrial"
-    ["Construction"] = true, ["Cranes"] = true, ["Crates, Drums, and Racks"] = true, ["Food and Drinks"] = true, ["Special"] = true, ["Military"] = true, ["Pickups and Icons"] = true,
-    -- From "interior objects"
-    ["Bar Items"] = true, ["Shop Items"] = true, ["Household Items"] = true, ["Furniture"] = true, ["Trash"] = true,
-    ["Casino Items"] = true, ["More Interiors"] = true, ["Doors and Windows"] = true, ["Clothes"] = true, ["Car parts"] = true, ["Weapon Models"] = true,
-    ["Tables and Chairs"] = true, ["Alpha Channels and Non Collidable"] = true, ["Nighttime Objects"] = true,
-    -- From "land masses"
-    ["Concrete and Rock"] = true, ["Grass and Dirt"] = true,
-    -- From "nature"
-    ["Rocks"] = true, ["Trees"] = true, ["Plants"] = true,
-    -- From "structures"
-    ["Garages and Petrol Stations"] = true, ["Ramps"] = true, ["Signs, Billboards, and Statues"] = true,
-    -- From "miscellaneous"
-    ["Street and Road Items"] = true, ["Military"] = true, ["Ladders, Stairs, and Scaffolding"] = true, ["Farm Objects"] = true, ["Fences, Walls, Gates, and Barriers"] = true,
-    -- From "Wires and Cables"
-    ["Wires and Cables"] = true,
+local groupTypeRegistry = {}
+
+-- [UPDATED] Mapping XML Groups to Meta Categories
+local xmlToMetaGroup = {
+    -- Split Nature
+    ["Trees"] = "Trees",
+    ["Plants"] = "Plants",
+
+    -- Land Masses (Now includes Rocks)
+    ["Concrete and Rock"] = "Land Masses",
+    ["Grass and Dirt"] = "Land Masses",
+    ["Rocks"] = "Land Masses",
+
+    -- Buildings
+    ["Factories and Warehouses"] = "Buildings",
+    ["Stores and Shops"] = "Buildings",
+    ["Graveyard"] = "Buildings",
+    ["Houses and Apartments"] = "Buildings",
+    ["Offices and Skyscrapers"] = "Buildings",
+    ["Other Buildings"] = "Buildings",
+    ["Restaurants and Hotels"] = "Buildings",
+    ["Sports and Stadium Objects"] = "Buildings",
+    ["Bars, Clubs, and Casinos"] = "Buildings",
+
+    -- Industrial
+    ["Construction"] = "Industrial",
+    ["Cranes"] = "Industrial",
+    ["Crates, Drums, and Racks"] = "Industrial",
+    ["Food and Drinks"] = "Industrial",
+    ["Special"] = "Industrial",
+    ["Military"] = "Industrial",
+    ["Pickups and Icons"] = "Industrial",
+
+    -- Interior
+    ["Bar Items"] = "Interior",
+    ["Shop Items"] = "Interior",
+    ["Household Items"] = "Interior",
+    ["Furniture"] = "Interior",
+    ["Trash"] = "Interior",
+    ["Casino Items"] = "Interior",
+    ["More Interiors"] = "Interior",
+    ["Doors and Windows"] = "Interior",
+    ["Clothes"] = "Interior",
+    ["Car parts"] = "Interior",
+    ["Weapon Models"] = "Interior",
+    ["Tables and Chairs"] = "Interior",
+    ["Alpha Channels and Non Collidable"] = "Interior",
+    ["Nighttime Objects"] = "Interior",
+
+    -- Structures
+    ["Garages and Petrol Stations"] = "Structures",
+    ["Ramps"] = "Structures",
+    ["Signs, Billboards, and Statues"] = "Structures",
+
+    -- Infrastructure (Miscellaneous)
+    ["Street and Road Items"] = "Infrastructure",
+    ["Ladders, Stairs, and Scaffolding"] = "Infrastructure",
+    ["Farm Objects"] = "Infrastructure",
+    ["Fences, Walls, Gates, and Barriers"] = "Infrastructure",
+    ["Wires and Cables"] = "Infrastructure",
+    ["Ships, Docks, and Piers"] = "Infrastructure",
+    ["General"] = "Infrastructure",
+
+    -- Track
+    ["Roads, Bridges, and Tunnels"] = "Track",
+    ["Airport and Aircraft Objects"] = "Track",
+    ["Railroads"] = "Track",
 }
-local trackGroups = {
-    ["Roads, Bridges, and Tunnels"] = true, ["Airport and Aircraft Objects"] = true, ["Railroads"] = true,
+
+-- Define which Meta Groups are Decoration vs Track
+local metaGroupTypes = {
+    ["Trees"] = "Decoration",
+    ["Plants"] = "Decoration",
+    ["Land Masses"] = "Decoration",
+    ["Buildings"] = "Decoration",
+    ["Industrial"] = "Decoration",
+    ["Interior"] = "Decoration",
+    ["Structures"] = "Decoration",
+    ["Infrastructure"] = "Decoration",
+    ["Track"] = "Track",
 }
 
 -- ////////////////////////////////////////////////////////////////////////////
 -- // CORE SERVER LOGIC
 -- ////////////////////////////////////////////////////////////////////////////
 
----
--- @function table.size
--- Helper to get the count of key-value pairs in a table.
----
 function table.size(tbl)
     local count = 0
-    for _ in pairs(tbl) do count = count + 1 end
+    for _ in pairs(tbl) do
+        count = count + 1
+    end
     return count
 end
 
-
----
--- @function buildCategoryLookup
--- Loads objects.xml and categorizes every model ID into Decoration, Track, or OTHER.
--- This is a heavy one-time operation on server start.
----
 function buildCategoryLookup()
     outputDebugString("[VisionX] Loading and parsing objects.xml...")
     local xmlFile = xmlLoadFile("objects.xml")
     if not xmlFile then
-        outputServerLog("[VisionX] FATAL ERROR: Could not load objects.xml! The resource will not function.")
+        outputServerLog(
+            "[VisionX] FATAL ERROR: Could not load objects.xml! The resource will not function."
+        )
         return
     end
 
+    -- Populate Registry for Client
+    for metaName, typeName in pairs(metaGroupTypes) do
+        groupTypeRegistry[metaName] = typeName
+    end
+
     local function processNode(node)
-        -- Process objects in the current group
         local j = 0
         local objectNode = xmlFindChild(node, "object", j)
         while objectNode do
             local modelID = tonumber(xmlNodeGetAttribute(objectNode, "model"))
             local parentGroup = xmlNodeGetParent(objectNode)
             if modelID and parentGroup then
-                local groupName = xmlNodeGetAttribute(parentGroup, "name")
-                if decorationGroups[groupName] then
-                    categoryLookup[modelID] = "Decoration"
-                elseif trackGroups[groupName] then
-                    categoryLookup[modelID] = "Track"
+                local xmlGroupName = xmlNodeGetAttribute(parentGroup, "name")
+                local metaCategory = xmlToMetaGroup[xmlGroupName]
+
+                if metaCategory then
+                    categoryLookup[modelID] = metaCategory
                 end
             end
             j = j + 1
             objectNode = xmlFindChild(node, "object", j)
         end
-        
-        -- Recurse into subgroups
+
         local k = 0
         local subGroupNode = xmlFindChild(node, "group", k)
         while subGroupNode do
@@ -115,26 +174,37 @@ function buildCategoryLookup()
     processNode(xmlFile)
     xmlUnloadFile(xmlFile)
 
-    -- Force-categorize specific custom/problematic objects
-    categoryLookup[3458] = "Track"; categoryLookup[8558] = "Track"; categoryLookup[8838] = "Track";
-    categoryLookup[6959] = "Track"; categoryLookup[7657] = "Track"; categoryLookup[3095] = "Track";
-    categoryLookup[18450] = "Track"; categoryLookup[2910] = "Track"; categoryLookup[3437] = "Track";
-    categoryLookup[8392] = "Track"; categoryLookup[9623] = "Track"; categoryLookup[8357] = "Track";
-    categoryLookup[7488] = "Track"; categoryLookup[3877] = "Track"; categoryLookup[9282] = "Track";
-    categoryLookup[6949] = "Track"; categoryLookup[18253] = "Track";
+    -- Manual Overrides (Force specific objects to Track meta-group)
+    local trackOverrides = {
+        3458,
+        8558,
+        8838,
+        6959,
+        7657,
+        3095,
+        18450,
+        2910,
+        3437,
+        8392,
+        9623,
+        8357,
+        7488,
+        3877,
+        9282,
+        6949,
+        18253,
+    }
+    for _, id in ipairs(trackOverrides) do
+        categoryLookup[id] = "Track"
+    end
 
-    categoryLookup[10444] = "Decoration"; categoryLookup[7916] = "Decoration"; categoryLookup[852] = "Decoration";
-    categoryLookup[16135] = "Decoration"; categoryLookup[4206] = "Decoration"; categoryLookup[3276] = "Decoration";
-    categoryLookup[1408] = "Decoration"; categoryLookup[3260] = "Decoration"; categoryLookup[1446] = "Decoration";
-    categoryLookup[7423] = "Decoration";
-    
-    outputServerLog("[VisionX] Finished building category list. " .. table.size(categoryLookup) .. " objects categorized.")
+    outputServerLog(
+        "[VisionX] Finished building category list. "
+            .. table.size(categoryLookup)
+            .. " objects categorized."
+    )
 end
 
----
--- @function loadSettings
--- Loads the saved settings from a JSON file on resource start.
----
 function loadSettings()
     local file = fileOpen("settings.json")
     if file then
@@ -142,13 +212,19 @@ function loadSettings()
         fileClose(file)
         local success, data = pcall(fromJSON, content)
         if success and type(data) == "table" then
-            serverConfig = data
-            outputServerLog("[VisionX] Successfully loaded saved settings from settings.json")
+            for k, v in pairs(data) do
+                serverConfig[k] = v
+            end
+            outputServerLog("[VisionX] Successfully loaded saved settings.")
         else
-            outputServerLog("[VisionX] Could not parse settings.json, using default values.")
+            outputServerLog(
+                "[VisionX] Could not parse settings.json, using default values."
+            )
         end
     else
-        outputServerLog("[VisionX] No settings.json found, using default values.")
+        outputServerLog(
+            "[VisionX] No settings.json found, using default values."
+        )
     end
 end
 
@@ -156,75 +232,97 @@ end
 -- // EVENT HANDLERS
 -- ////////////////////////////////////////////////////////////////////////////
 
--- On resource start, load data.
-addEventHandler("onResourceStart", resourceRoot,
-    function()
-        loadSettings()
-        buildCategoryLookup()
-    end
-)
+addEventHandler("onResourceStart", resourceRoot, function()
+    loadSettings()
+    buildCategoryLookup()
+end)
 
--- When a player's client starts the resource, send them all necessary data.
 addEvent("visionx:requestInitialData", true)
-addEventHandler("visionx:requestInitialData", root,
-    function()
-        -- Check if the player is an admin or supermod
-        local playerAccount = getPlayerAccount(source)
-        local isModerator = false
-        if not isGuestAccount(playerAccount) then
-            isModerator = isObjectInACLGroup("user." .. getAccountName(playerAccount), aclGetGroup("Admin")) or
-                          isObjectInACLGroup("user." .. getAccountName(playerAccount), aclGetGroup("Supermods"))
-        end
-        
-        -- Send categories, server settings, and the player's admin status
-        triggerClientEvent(source, "visionx:receiveInitialData", source, categoryLookup, serverConfig, isModerator)
+addEventHandler("visionx:requestInitialData", root, function()
+    local playerAccount = getPlayerAccount(source)
+    local isModerator = false
+    if not isGuestAccount(playerAccount) then
+        isModerator = isObjectInACLGroup(
+            "user." .. getAccountName(playerAccount),
+            aclGetGroup("Admin")
+        ) or isObjectInACLGroup(
+            "user." .. getAccountName(playerAccount),
+            aclGetGroup("Supermods")
+        )
     end
-)
 
--- When a player saves their settings via the UI.
+    triggerClientEvent(
+        source,
+        "visionx:receiveInitialData",
+        source,
+        categoryLookup,
+        serverConfig,
+        isModerator,
+        groupTypeRegistry
+    )
+end)
+
 addEvent("visionx:saveSettings", true)
-addEventHandler("visionx:saveSettings", root,
-    function(newSettings)
-        if type(newSettings) ~= "table" then return end
-
-        -- ** ACL CHECK **
-        local playerAccount = getPlayerAccount(source)
-        local isModerator = false
-        if not isGuestAccount(playerAccount) then
-            isModerator = isObjectInACLGroup("user." .. getAccountName(playerAccount), aclGetGroup("Admin")) or
-                          isObjectInACLGroup("user." .. getAccountName(playerAccount), aclGetGroup("Supermods"))
-        end
-
-        if not isModerator then
-            triggerClientEvent(source, "visionx:onSettingsSaved", source, false, "You do not have permission to change global settings.")
-            return
-        end
-        
-        serverConfig = newSettings
-        
-        -- Save the settings to file
-        local file = fileCreate("settings.json")
-        if file then
-            fileWrite(file, toJSON(serverConfig, true))
-            fileClose(file)
-            
-            -- Inform the source player of success
-            triggerClientEvent(source, "visionx:onSettingsSaved", source, true, "Settings saved and applied to all players.")
-            
-            -- Sync the new settings with ALL players
-            triggerClientEvent(getRootElement(), "visionx:syncSettings", resourceRoot, serverConfig)
-            outputServerLog("[VisionX] Settings updated and saved by " .. getPlayerName(source))
-        else
-            -- Inform the source player of failure
-            triggerClientEvent(source, "visionx:onSettingsSaved", source, false, "Failed to write settings.json on server.")
-            outputServerLog("[VisionX] ERROR: Could not create or write to settings.json.")
-        end
+addEventHandler("visionx:saveSettings", root, function(newSettings)
+    if type(newSettings) ~= "table" then
+        return
     end
-)
 
--- ////////////////////////////////////////////////////////////////////////////
--- // EXPORTED FUNCTIONS (for other resources)
--- ////////////////////////////////////////////////////////////////////////////
+    local playerAccount = getPlayerAccount(source)
+    local isModerator = false
+    if not isGuestAccount(playerAccount) then
+        isModerator = isObjectInACLGroup(
+            "user." .. getAccountName(playerAccount),
+            aclGetGroup("Admin")
+        ) or isObjectInACLGroup(
+            "user." .. getAccountName(playerAccount),
+            aclGetGroup("Supermods")
+        )
+    end
+
+    if not isModerator then
+        triggerClientEvent(
+            source,
+            "visionx:onSettingsSaved",
+            source,
+            false,
+            "You do not have permission to change global settings."
+        )
+        return
+    end
+
+    serverConfig = newSettings
+
+    local file = fileCreate("settings.json")
+    if file then
+        fileWrite(file, toJSON(serverConfig, true))
+        fileClose(file)
+        triggerClientEvent(
+            source,
+            "visionx:onSettingsSaved",
+            source,
+            true,
+            "Settings saved and applied to all players."
+        )
+        triggerClientEvent(
+            getRootElement(),
+            "visionx:syncSettings",
+            resourceRoot,
+            serverConfig
+        )
+        outputServerLog(
+            "[VisionX] Settings updated and saved by " .. getPlayerName(source)
+        )
+    else
+        triggerClientEvent(
+            source,
+            "visionx:onSettingsSaved",
+            source,
+            false,
+            "Failed to write settings.json on server."
+        )
+    end
+end)
 
 function getCategoryLookup()
     return categoryLookup

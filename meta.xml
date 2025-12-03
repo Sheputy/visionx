@@ -1,5 +1,5 @@
 <meta>
-    <info author="Corrupt" name="VisionX" version="3.2.8" type="Advanced Draw Distance Script" />
+    <info author="Corrupt" name="VisionX" version="3.3.8" type="Advanced Draw Distance Script" />
     
     <script src="server.lua" type="server" />
     <script src="client.lua" type="client" />
@@ -8,11 +8,9 @@
     <file src="objects.xml" />
     <export function="getCategoryLookup" type="server" />
     <file src="settings.json" />
-
     <aclrequest>
         <right name="function.fetchRemote" access="true" />
         <right name="function.restartResource" access="true" />
-        
         <right name="function.fileCreate" access="true" />
         <right name="function.fileWrite" access="true" />
         <right name="function.fileClose" access="true" />
