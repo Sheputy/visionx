@@ -300,12 +300,12 @@ function UIManager:CreateSettingsPanel()
     self.Settings.window = panel
 
     local labels = {
-        "Max View Range (500-3000):",
+        "Max View Range (500-10000):",
         "Min View Range (0-300):",
         "Creation Batch (5-1000):",
         "Update Tick (50-9000ms):",
-        "Spatial Grid (10-3000):",
-        "Active Clone Limit (50-3000):",
+        "Spatial Grid (100-1000):",
+        "Active Clone Limit (50-5000):",
     }
     local keys = {
         "MAX_VIEW_RANGE",
@@ -646,14 +646,14 @@ function UIManager:onSettingsSave()
         return num
     end
 
-    newConfig.MAX_VIEW_RANGE = getClampedValue("MAX_VIEW_RANGE", 100, 3000)
+    newConfig.MAX_VIEW_RANGE = getClampedValue("MAX_VIEW_RANGE", 100, 10000)
     newConfig.MIN_VIEW_RANGE = getClampedValue("MIN_VIEW_RANGE", 0, 600)
     newConfig.CREATION_BATCH_LIMIT =
         getClampedValue("CREATION_BATCH_LIMIT", 1, 1000)
     newConfig.UPDATE_TICK_RATE = getClampedValue("UPDATE_TICK_RATE", 1, 9000)
     newConfig.SPATIAL_GRID_CELL_SIZE =
-        getClampedValue("SPATIAL_GRID_CELL_SIZE", 1, 3000)
-    newConfig.CLONE_LIMIT = getClampedValue("CLONE_LIMIT", 50, 3000)
+        getClampedValue("SPATIAL_GRID_CELL_SIZE", 1, 1000)
+    newConfig.CLONE_LIMIT = getClampedValue("CLONE_LIMIT", 50, 5000)
     newConfig.DEBUG_MODE = VisionX.CONFIG.DEBUG_MODE
 
     -- Read Priorities

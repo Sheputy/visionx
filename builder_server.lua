@@ -14,7 +14,7 @@
 ============================================================
 ]]
 
--- [CORE SAVING LOGIC PRESERVED FROM YOUR FILE]
+-- [CORE SAVING LOGIC]
 addEvent("visionx:requestMapList", true)
 addEventHandler("visionx:requestMapList", root, function()
     local mapResources = {}
