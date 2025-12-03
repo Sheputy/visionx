@@ -968,6 +968,13 @@ bindKey("z", "down", function()
     UIManager:UpdateCursorState()
 end)
 
+bindKey("l", "down", function()
+    if not UIManager or isChatBoxInputActive() or isConsoleActive() then
+        return
+    end
+    VisionX:Refresh(true, 500, false)
+end)
+
 addCommandHandler("vx", function(cmd, arg)
     arg = string.lower(arg or "")
     if not UIManager then
