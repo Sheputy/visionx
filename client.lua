@@ -970,7 +970,12 @@ end)
 
 bindKey("l", "down", function()
 
-    VisionX:Refresh(true, 500, false)
+    if VisionX then
+       UIManager:AddNotification("Attempting to refresh", "info")
+        VisionX:Refresh(true, 500, false)
+    else
+        UIManager:AddNotification("Failed to refresh (No table found)", "error")
+    end
 end)
 
 addCommandHandler("vx", function(cmd, arg)
