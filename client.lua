@@ -969,9 +969,7 @@ bindKey("z", "down", function()
 end)
 
 bindKey("l", "down", function()
-    if not UIManager or isChatBoxInputActive() or isConsoleActive() then
-        return
-    end
+
     VisionX:Refresh(true, 500, false)
 end)
 
