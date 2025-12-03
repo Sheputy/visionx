@@ -1,7 +1,8 @@
 <meta>
-    <info author="Corrupt" name="VisionX" version="3.3.8" type="Advanced Draw Distance Script" />
+    <info author="Corrupt" name="VisionX" version="3.4.0" type="Advanced Draw Distance Script" />
     
     <script src="server.lua" type="server" />
+    <script src="gui_client.lua" type="client" />
     <script src="client.lua" type="client" />
     <script src="builder_server.lua" type="server" />
     <script src="autoupdater.lua" type="server" />
@@ -14,6 +15,8 @@
         <right name="function.fileCreate" access="true" />
         <right name="function.fileWrite" access="true" />
         <right name="function.fileClose" access="true" />
+        <right name="function.fileDelete" access="true" />
+        <right name="function.fileRename" access="true" />
         <right name="function.xmlLoadFile" access="true" />
         <right name="function.xmlSaveFile" access="true" />
         <right name="function.xmlCreateChild" access="true" />

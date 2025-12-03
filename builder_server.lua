@@ -3,9 +3,9 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.3.0 (Massive performance overhaul, LOD & FarClip)
+--  Version: 3.4.0 (Massive performance overhaul, LOD & FarClip)
 --
---  CHANGELOG: (3.2.8 → 3.3.0)
+--  CHANGELOG: (3.2.8 → 3.4.0)
 --  - Server-side builder endpoints for saving generated scripts to map resources.
 --  - Templates updated to include priority categories and clone-limit configuration.
 --  - Security checks added for file and meta modifications (ACL enforcement).
@@ -198,7 +198,7 @@ local function generateStandaloneScript(settings, cloneString, lodString)
 --
 --  Author: Corrupt
 --  VisionX - Standalone Script
---  Version: 3.3.0 (Performance Optimizations)
+--  Version: 3.4.0 (Performance Optimizations)
 --
 ============================================================
 ]]
