@@ -3,9 +3,9 @@
 --
 --  Author: Corrupt
 --  VisionX Advanced - Client-Side Logic
---  Version: 3.4.0 (Massive performance overhaul, LOD & FarClip)
+--  Version: 3.4.1 (Massive performance overhaul, LOD & FarClip)
 --
---  CHANGELOG: (3.2.8 → 3.4.0)
+--  CHANGELOG: (3.2.8 → 3.4.1)
 --  - Added standalone Builder UI and map-selection save flow (auto-save to map resource).
 --  - Separated GUI into `gui_client.lua` and improved notification UX.
 --  - Introduced configurable `CLONE_LIMIT` and on-screen clone overlay with color thresholds.
@@ -889,7 +889,7 @@ function VisionX:Initialize()
     self:_BuildMasterObjectRegistry()
     addEventHandler("onClientRender", root, VisionX.UpdateFPS)
     if UIManager then
-        UIManager:AddNotification("VisionX 3.4.0 Loaded.", "info")
+        UIManager:AddNotification("VisionX 3.4.1 Loaded.", "info")
     end
 end
 

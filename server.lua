@@ -3,9 +3,9 @@
 --
 --  Author: Corrupt
 --  VisionX Builder - Server-Side
---  Version: 3.4.0 (Massive performance overhaul, LOD & FarClip)
+--  Version: 3.4.1 (Massive performance overhaul, LOD & FarClip)
 --
---  CHANGELOG: (3.2.8 → 3.4.0)
+--  CHANGELOG: (3.2.8 → 3.4.1)
 --  - Added builder endpoints for saving generated standalone scripts to map resources.
 --  - Centralized default settings and introduced priority categories (Land Masses, Trees, Plants).
 --  - Increased default MIN_VIEW_RANGE and tuned LOD handling for large maps.

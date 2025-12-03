@@ -3,9 +3,9 @@
 --
 --  Author: Corrupt
 --  VisionX Advanced - GUI & Rendering Logic
---  Version: 3.4.0 (Seperated GUI from Client Logic)
+--  Version: 3.4.1 (Seperated GUI from Client Logic)
 --
---  CHANGELOG: (3.2.8 → 3.4.0)
+--  CHANGELOG: (3.2.8 → 3.4.1)
 --  - Split GUI logic into a dedicated module (`gui_client.lua`) for cleaner separation.
 --  - Added Build dialog, map selection combo, and export/save UX improvements.
 --  - Exposed clone limit and overlay toggles to the UI; improved stats reporting.
@@ -208,7 +208,7 @@ function UIManager:CreateMainPanel()
     local w, h = 230, 425
     local x, y = 10, sy / 2 - h / 2
 
-    local panel = guiCreateWindow(x, y, w, h, "VisionX v3.3.0", false)
+    local panel = guiCreateWindow(x, y, w, h, "VisionX v3.4.1", false)
     guiWindowSetSizable(panel, false)
     guiWindowSetMovable(panel, true)
     self.Main.window = panel
