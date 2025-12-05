@@ -1,5 +1,5 @@
 <meta>
-    <info author="Corrupt" name="VisionX" version="3.4.1" type="Advanced Draw Distance Script" />
+    <info author="Corrupt" name="VisionX" version="3.4.2" type="Advanced Draw Distance Script" />
     
     <script src="server.lua" type="server" />
     <script src="gui_client.lua" type="client" />
